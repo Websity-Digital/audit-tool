@@ -1,84 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SEO Audit Tool</title>
+  <title>SEO Auditor</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
-
-  <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-    <header class="text-center mb-8">
-      <h1 class="text-3xl font-extrabold text-slate-800">SEO Auditor</h1>
-      <p class="text-slate-500">Get your instant PDF report</p>
-    </header>
-
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <div class="bg-white p-8 rounded-lg shadow-lg w-96">
+    <h2 class="text-2xl font-bold mb-4 text-center">SEO Audit Tool</h2>
     <form id="auditForm" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-slate-700">Name</label>
-        <input name="userName" type="text" required class="w-full mt-1 border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="John Doe">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700">Email</label>
-        <input name="userEmail" type="email" required class="w-full mt-1 border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="john@example.com">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700">Website URL</label>
-        <input name="websiteUrl" type="url" required class="w-full mt-1 border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://example.com">
-      </div>
-
-      <button id="submitBtn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all duration-200">
-        Generate Free Audit
-      </button>
+      <input name="userName" placeholder="Your Name" required class="w-full p-2 border rounded">
+      <input name="userEmail" type="email" placeholder="Your Email" required class="w-full p-2 border rounded">
+      <input name="websiteUrl" type="url" placeholder="https://example.com" required class="w-full p-2 border rounded">
+      <button id="btn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Generate Report</button>
     </form>
-
-    <div id="loading" class="hidden mt-6 text-center">
-      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-      <p class="text-blue-600 mt-2 font-medium">Analyzing website & generating PDF...</p>
-    </div>
+    <div id="loader" class="hidden mt-4 text-center text-blue-600 animate-pulse">Processing Audit...</div>
   </div>
 
   <script>
     const form = document.getElementById("auditForm");
-    const loading = document.getElementById("loading");
-    const btn = document.getElementById("submitBtn");
+    const loader = document.getElementById("loader");
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      
-      // UI Updates
-      loading.classList.remove("hidden");
-      btn.disabled = true;
-      btn.classList.add("opacity-50", "cursor-not-allowed");
+      loader.classList.remove("hidden");
 
-      // Prepare Data
-      const formData = new FormData(form);
-      const payload = Object.fromEntries(formData.entries());
+      const data = Object.fromEntries(new FormData(form));
 
       try {
-        const response = await fetch("/generate-audit", {
+        const res = await fetch("/generate-audit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error("Audit failed on server");
-
-        // Convert response to PDF blob
-        const blob = await response.blob();
-        const pdfUrl = URL.createObjectURL(blob);
-        
-        // Open in new tab
-        window.open(pdfUrl, "_blank");
-
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank"); // Opens PDF in new tab
       } catch (err) {
-        alert("Something went wrong. Please check the URL and try again.");
-        console.error(err);
+        alert("Error generating PDF");
       } finally {
-        loading.classList.add("hidden");
-        btn.disabled = false;
-        btn.classList.remove("opacity-50", "cursor-not-allowed");
+        loader.classList.add("hidden");
       }
     });
   </script>
