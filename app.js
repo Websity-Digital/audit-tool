@@ -2,72 +2,109 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const puppeteer = require('puppeteer-core');
-const chromium = require('chromium');
+const chromium = require('@sparticuz/chromium');
 const nodemailer = require('nodemailer');
-require('dotenv').config(); // Add this at the very top
+require('dotenv').config();
 
 const app = express();
+
+// -------------------- MIDDLEWARE --------------------
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(express.static('public'));
 
-// --- EMAIL CONFIGURATION ---
+// -------------------- EMAIL CONFIG --------------------
 const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS, // Gmail APP PASSWORD
+  },
 });
 
-
-
+// -------------------- ROUTE --------------------
 app.post('/generate-audit', async (req, res) => {
   const { userName, userEmail, websiteUrl } = req.body;
 
   try {
-    const response = await axios.get(websiteUrl);
-    const $ = cheerio.load(response.data);
-    const title = $('title').text() || 'No Title Found';
+    // 1️⃣ Fetch website safely
+    const response = await axios.get(websiteUrl, {
+      timeout: 10000,
+      validateStatus: () => true,
+    });
 
+    if (!response.data) {
+      throw new Error('Unable to fetch website HTML');
+    }
+
+    const $ = cheerio.load(response.data);
+    const title = $('title').text() || 'No title found';
+
+    // 2️⃣ Launch Chromium (Railway compatible)
     const browser = await puppeteer.launch({
-      executablePath: chromium.path,
       args: chromium.args,
-      headless: chromium.headless
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
+
     await page.setContent(`
+      <!DOCTYPE html>
       <html>
-        <body style="font-family: Arial; padding:40px">
-          <h1 style="color:#2563eb">SEO Audit Report</h1>
-          <p>Hello ${userName}</p>
-          <p><b>Website:</b> ${websiteUrl}</p>
-          <p><b>SEO Title:</b> ${title}</p>
+        <head>
+          <meta charset="utf-8" />
+          <title>SEO Audit</title>
+        </head>
+        <body style="font-family: Arial; padding: 40px;">
+          <h1 style="color:#2563eb;">SEO Audit Report</h1>
+          <hr/>
+          <p><strong>Name:</strong> ${userName}</p>
+          <p><strong>Website:</strong> ${websiteUrl}</p>
+          <p><strong>SEO Title:</strong> ${title}</p>
         </body>
       </html>
     `);
 
-    const pdfBuffer = await page.pdf({ format: 'A4' });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+    });
+
     await browser.close();
 
+    // 3️⃣ Send email
     await transporter.sendMail({
       from: `"SEO Auditor" <${process.env.EMAIL_USER}>`,
       to: userEmail,
       subject: 'Your SEO Audit Report',
-      attachments: [{ filename: 'SEO_Audit_Report.pdf', content: pdfBuffer }]
+      text: `Hi ${userName},\n\nYour SEO audit report is attached.\n\nRegards,\nSEO Auditor`,
+      attachments: [
+        {
+          filename: 'SEO_Audit_Report.pdf',
+          content: pdfBuffer,
+        },
+      ],
     });
 
+    // 4️⃣ Return PDF to browser
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="SEO_Audit_Report.pdf"');
+    res.setHeader(
+      'Content-Disposition',
+      'inline; filename="SEO_Audit_Report.pdf"'
+    );
     res.send(pdfBuffer);
 
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error('AUDIT ERROR:', error);
     res.status(500).send('Audit failed');
   }
 });
 
-
-app.listen(3000, () => console.log('Server running on http://localhost:3000'));
+// -------------------- SERVER --------------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
