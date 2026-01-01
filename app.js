@@ -1,214 +1,57 @@
-const express = require("express");
-const axios = require("axios");
-const cheerio = require("cheerio");
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
-const nodemailer = require("nodemailer");
-const path = require("path");
-require("dotenv").config();
+const express = require('express');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
+const path = require('path');
 
 const app = express();
-
-// -------------------- MIDDLEWARE --------------------
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static('public'));
 
-// Railway / reverse proxy friendliness
-app.set("trust proxy", 1);
+app.post('/generate-audit', async (req, res) => {
+    const { userName, userEmail, websiteUrl } = req.body;
 
-// -------------------- BASIC ROUTES (PREVENTS 502) --------------------
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+    try {
+        // 1. Scrape the website
+        const response = await axios.get(websiteUrl);
+        const $ = cheerio.load(response.data);
+        const title = $('title').text() || "No Title Found";
+        const h1 = $('h1').first().text() || "No H1 Found";
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ ok: true, uptime: process.uptime() });
-});
+        // 2. Start Puppeteer
+        const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+        const page = await browser.newPage();
 
-app.get("/favicon.ico", (req, res) => {
-  res.status(204).end();
-});
+        // 3. Create the HTML for the PDF
+        const htmlContent = `
+            <div style="padding: 50px; font-family: Arial;">
+                <h1 style="color: #2563eb;">SEO Report for ${userName}</h1>
+                <p><b>Email:</b> ${userEmail}</p>
+                <p><b>Website:</b> ${websiteUrl}</p>
+                <hr>
+                <h3>Analysis:</h3>
+                <p><b>SEO Title:</b> ${title}</p>
+                <p><b>Main Heading:</b> ${h1}</p>
+                <p>Status: Audit Completed Successfully.</p>
+            </div>
+        `;
 
-// -------------------- HELPERS --------------------
-function normalizeUrl(input) {
-  if (!input) return "";
-  let url = input.trim();
+        await page.setContent(htmlContent);
+        
+        // 4. Generate PDF buffer (don't save to disk, send to browser)
+        const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
 
-  // auto add protocol
-  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-
-  // validate
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "";
-  }
-
-  // Only allow http(s)
-  if (!["http:", "https:"].includes(parsed.protocol)) return "";
-
-  return parsed.toString();
-}
-
-function escapeHtml(str = "") {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-// -------------------- EMAIL (OPTIONAL) --------------------
-const canSendEmail =
-  process.env.EMAIL_USER &&
-  process.env.EMAIL_PASS &&
-  process.env.EMAIL_USER.trim() &&
-  process.env.EMAIL_PASS.trim();
-
-const transporter = canSendEmail
-  ? nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    })
-  : null;
-
-// -------------------- AUDIT ROUTE --------------------
-app.post("/generate-audit", async (req, res) => {
-  const userName = (req.body.userName || "").trim();
-  const userEmail = (req.body.userEmail || "").trim();
-  const websiteUrlRaw = (req.body.websiteUrl || "").trim();
-
-  const websiteUrl = normalizeUrl(websiteUrlRaw);
-
-  if (!userName || !websiteUrl) {
-    return res.status(400).send("Missing name or invalid website URL.");
-  }
-
-  let browser;
-
-  try {
-    // 1) Fetch site HTML
-    const response = await axios.get(websiteUrl, {
-      timeout: 15000,
-      maxRedirects: 5,
-      validateStatus: () => true,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari/537.36"
-      }
-    });
-
-    if (!response.data || typeof response.data !== "string") {
-      throw new Error("Failed to fetch website HTML");
-    }
-
-    const $ = cheerio.load(response.data);
-
-    const title = $("title").first().text().trim() || "No title found";
-    const metaDescription =
-      $('meta[name="description"]').attr("content")?.trim() ||
-      "No meta description found";
-
-    const h1 =
-      $("h1").first().text().trim() || "No H1 found";
-
-    // 2) Launch Chromium (Railway friendly)
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless
-    });
-
-    const page = await browser.newPage();
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8" />
-        <title>SEO Audit</title>
-      </head>
-      <body style="font-family: Arial, sans-serif; padding: 40px;">
-        <h1 style="color:#2563eb; margin: 0 0 8px;">SEO Audit Report</h1>
-        <p style="margin:0 0 20px; color:#334155;">Quick on-page snapshot</p>
-        <hr style="margin: 18px 0;" />
-
-        <p><strong>Name:</strong> ${escapeHtml(userName)}</p>
-        <p><strong>Website:</strong> ${escapeHtml(websiteUrl)}</p>
-
-        <h2 style="margin-top:24px;">Key Checks</h2>
-        <ul>
-          <li><strong>Title:</strong> ${escapeHtml(title)}</li>
-          <li><strong>Meta Description:</strong> ${escapeHtml(metaDescription)}</li>
-          <li><strong>First H1:</strong> ${escapeHtml(h1)}</li>
-        </ul>
-
-        <p style="margin-top:28px; font-size: 12px; color:#64748b;">
-          Generated by SEO Audit Tool
-        </p>
-      </body>
-      </html>
-    `;
-
-    await page.setContent(html, { waitUntil: "load" });
-
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true
-    });
-
-    // 3) Email PDF (optional)
-    if (canSendEmail && userEmail) {
-      await transporter.sendMail({
-        from: `"${process.env.FROM_NAME || "SEO Auditor"}" <${process.env.EMAIL_USER}>`,
-        to: userEmail,
-        subject: "Your SEO Audit Report",
-        text: `Hi ${userName},
-
-Your SEO audit report is attached.
-
-Regards,
-${process.env.FROM_NAME || "SEO Auditor"}`,
-        attachments: [
-          {
-            filename: "SEO_Audit_Report.pdf",
-            content: pdfBuffer
-          }
-        ]
-      });
-    }
-
-    // 4) Return PDF to browser
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", 'inline; filename="SEO_Audit_Report.pdf"');
-    return res.send(pdfBuffer);
-
-  } catch (error) {
-    console.error("AUDIT ERROR:", error);
-    return res.status(500).send("Audit failed: " + (error?.message || "Unknown error"));
-  } finally {
-    // Always close browser
-    if (browser) {
-      try {
         await browser.close();
-      } catch (e) {
-        console.error("BROWSER CLOSE ERROR:", e);
-      }
+
+        // 5. Send PDF to browser to open in new tab
+        res.contentType("application/pdf");
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        res.status(500).send("Error generating audit: " + error.message);
     }
-  }
 });
 
-// -------------------- SERVER --------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(3000, () => {
+    console.log('Server running at http://localhost:3000');
 });
