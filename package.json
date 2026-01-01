@@ -1,7 +1,7 @@
 {
-  "name": "my-seo-tool",
+  "name": "seo-audit-tool",
   "version": "1.0.0",
-  "description": "Professional SEO Audit Tool",
+  "description": "SEO Audit Tool with PDF & Email",
   "main": "app.js",
   "scripts": {
     "start": "node app.js"
@@ -10,11 +10,11 @@
     "node": "18.x"
   },
   "dependencies": {
-    "axios": "1.6.8",
-    "cheerio": "1.0.0-rc.12",
-    "dotenv": "16.4.5",
-    "express": "4.22.1",
-    "nodemailer": "6.9.8",
-    "puppeteer": "22.8.2"
+    "@sparticuz/chromium": "^123.0.1",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.4.5",
+    "express": "^4.22.1",
+    "nodemailer": "^6.9.13",
+    "puppeteer-core": "^24.3.0"
   }
 }
