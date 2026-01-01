@@ -2,49 +2,85 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SEO Audit Tool</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
 
-<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+  <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-extrabold text-slate-800">SEO Auditor</h1>
+      <p class="text-slate-500">Get your instant PDF report</p>
+    </header>
 
-<div class="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
-  <h1 class="text-2xl font-bold text-center mb-4">SEO Audit</h1>
+    <form id="auditForm" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700">Name</label>
+        <input name="userName" type="text" required class="w-full mt-1 border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="John Doe">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700">Email</label>
+        <input name="userEmail" type="email" required class="w-full mt-1 border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="john@example.com">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700">Website URL</label>
+        <input name="websiteUrl" type="url" required class="w-full mt-1 border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://example.com">
+      </div>
 
-  <form id="auditForm" class="space-y-4">
-    <input name="userName" required placeholder="Your Name" class="w-full border p-2 rounded"/>
-    <input name="userEmail" type="email" required placeholder="Your Email" class="w-full border p-2 rounded"/>
-    <input name="websiteUrl" type="url" required placeholder="https://example.com" class="w-full border p-2 rounded"/>
-    <button id="submitBtn" class="w-full bg-blue-600 text-white py-2 rounded">
-      Generate Audit
-    </button>
-  </form>
+      <button id="submitBtn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all duration-200">
+        Generate Free Audit
+      </button>
+    </form>
 
-  <p id="loading" class="hidden text-center mt-4 text-blue-600">
-    Generating PDF...
-  </p>
-</div>
+    <div id="loading" class="hidden mt-6 text-center">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+      <p class="text-blue-600 mt-2 font-medium">Analyzing website & generating PDF...</p>
+    </div>
+  </div>
 
-<script>
-const form = document.getElementById("auditForm");
-const loading = document.getElementById("loading");
+  <script>
+    const form = document.getElementById("auditForm");
+    const loading = document.getElementById("loading");
+    const btn = document.getElementById("submitBtn");
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  loading.classList.remove("hidden");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      // UI Updates
+      loading.classList.remove("hidden");
+      btn.disabled = true;
+      btn.classList.add("opacity-50", "cursor-not-allowed");
 
-  const res = await fetch("/generate-audit", {
-    method: "POST",
-    body: new FormData(form)
-  });
+      // Prepare Data
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
 
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  window.open(url, "_blank");
+      try {
+        const response = await fetch("/generate-audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
 
-  loading.classList.add("hidden");
-});
-</script>
+        if (!response.ok) throw new Error("Audit failed on server");
 
+        // Convert response to PDF blob
+        const blob = await response.blob();
+        const pdfUrl = URL.createObjectURL(blob);
+        
+        // Open in new tab
+        window.open(pdfUrl, "_blank");
+
+      } catch (err) {
+        alert("Something went wrong. Please check the URL and try again.");
+        console.error(err);
+      } finally {
+        loading.classList.add("hidden");
+        btn.disabled = false;
+        btn.classList.remove("opacity-50", "cursor-not-allowed");
+      }
+    });
+  </script>
 </body>
 </html>
